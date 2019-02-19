@@ -31,3 +31,7 @@ redisDownload({ version: '5.0.3', downloadDir: '/my/download/directory' })
 ```
 
 `version` defaults to the latest version and `downloadDir` defaults to a temporary directory.
+
+# Inspiration
+
+This is a Redis version of [https://github.com/winfinit/mongodb-download](https://github.com/winfinit/mongodb-download)
