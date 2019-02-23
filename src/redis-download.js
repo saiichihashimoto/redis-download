@@ -151,8 +151,9 @@ if (require.main === module) {
 		.parse(process.argv);
 
 	redisDownload(program)
-		.then((redisDirectory) => console.log(redisDirectory)) // eslint-disable-line no-console
-		.catch((err) => {
+		// eslint-disable-next-line no-console, promise/prefer-await-to-then
+		.then((redisDirectory) => console.log(redisDirectory))
+		.catch((err) => { // eslint-disable-line promise/prefer-await-to-callbacks
 			console.error(err); // eslint-disable-line no-console
 
 			process.exit(err.code || 1);
