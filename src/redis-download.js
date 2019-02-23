@@ -77,7 +77,7 @@ async function downloadTar({ root, filename, algo, digest, url, stdio: [, stdout
 async function redisDownload({
 	version: specifiedVersion,
 	downloadDir = tmpdir(),
-	stdio = 'inherit',
+	stdio = [process.stdin, process.stdout, process.stderr],
 } = {}) {
 	const root = path.resolve(downloadDir, 'redis-download');
 
