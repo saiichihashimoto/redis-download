@@ -37,7 +37,7 @@
     "fs-extra": "8.0.1",
     "request": "2.88.0",
     "request-promise-native": "1.0.7",
-    "tar": "4.4.8"
+    "tar": "4.4.10"
   },
   "devDependencies": {
     "@babel/cli": "7.4.4",
@@ -45,7 +45,7 @@
     "@babel/preset-env": "7.4.5",
     "cz-conventional-changelog": "2.1.0",
     "eslint-config-saiichihashimoto": "1.2.24",
-    "husky": "2.3.0",
+    "husky": "2.4.1",
     "jest": "24.1.0",
     "lint-my-app": "3.3.29"
   }
