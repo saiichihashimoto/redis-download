@@ -4,6 +4,10 @@ node_js:
 branches:
   except:
     - /^v\d+\.\d+\.\d+$/
+script:
+  - npm test
+  - npm run build
+  - npm run test:e2e
 after_success:
   - cat ./coverage/lcov.info | npx coveralls
 jobs:
