@@ -10,7 +10,6 @@ import { extract } from 'tar';
 import { tmpdir } from 'os';
 
 const redisHashesUrl = 'https://raw.githubusercontent.com/antirez/redis-hashes/master/README';
-const crReturn = (process.platform === 'win32') ? '\x1b[0G' : '\r';
 const binaryNames = [
 	'redis-benchmark',
 	'redis-check-aof',
@@ -37,6 +36,7 @@ async function downloadTar({ root, filename, algo, digest, url, stdio: [, stdout
 
 		request(url)
 			.on('response', (response) => {
+				const crReturn = (process.platform === 'win32') ? '\x1b[0G' : '\r';
 				const total = parseInt(response.headers['content-length'], 10);
 				const totalMB = Math.round(total / 1048576 * 10) / 10;
 				let completed = 0;

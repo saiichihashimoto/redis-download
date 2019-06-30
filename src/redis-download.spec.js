@@ -20,6 +20,7 @@ describe('redis-download', () => {
 	const digest = jest.fn();
 	const update = jest.fn();
 
+	const originalPlatform = process.platform;
 	let stdio;
 	let response;
 	let writable;
@@ -64,6 +65,8 @@ describe('redis-download', () => {
 
 			return writable;
 		});
+
+		Object.defineProperty(process, 'platform', { value: originalPlatform });
 	});
 
 	afterEach(() => {
@@ -106,6 +109,36 @@ describe('redis-download', () => {
 			response.emit('data', { length: 1048576 });
 
 			expect(stdout.write).toHaveBeenNthCalledWith(i + 2, `Completed: ${i + 1}0 % (${i + 1}mb / 10mb)\r`);
+			expect(stdout.write).toHaveBeenCalledTimes(i + 2);
+		}
+
+		response.emit('data', { length: 0 });
+
+		expect(stdout.write).toHaveBeenCalledTimes(11);
+
+		writable.emit('finish');
+
+		await downloadLocation;
+	});
+
+	it('replaces newlines in win32', async () => {
+		Object.defineProperty(process, 'platform', { value: 'win32' });
+
+		createWriteStream.mockImplementation(() => writable);
+
+		const stdout = stdio[1];
+		const downloadLocation = redisDownload({ stdio });
+
+		await new Promise((resolve) => {
+			stdout.write = jest.fn().mockImplementationOnce(() => resolve());
+		});
+
+		expect(stdout.write).toHaveBeenNthCalledWith(1, 'Completed: 0 % (0mb / 10mb)\x1b[0G');
+
+		for (let i = 0; i < 10; i += 1) {
+			response.emit('data', { length: 1048576 });
+
+			expect(stdout.write).toHaveBeenNthCalledWith(i + 2, `Completed: ${i + 1}0 % (${i + 1}mb / 10mb)\x1b[0G`);
 			expect(stdout.write).toHaveBeenCalledTimes(i + 2);
 		}
 
