@@ -93,6 +93,18 @@ describe('redis-download', () => {
 		expect(downloadLocation).toBe('/a/tmp/dir/redis-download/redis-u.v.w');
 	});
 
+	it('ignores commented and empty lines', async () => {
+		requestAsync.mockImplementation(() => Promise.resolve('hash redis-u.v.w.tar.gz algo THEHASH http://foo-bar.com/redis-u.v.w.tar.gz\nhash redis-x.y.z.tar.gz algo THEHASH http://foo-bar.com/redis-x.y.z.tar.gz\n\n#hash redis-a.b.c.tar.gz algo THEHASH http://foo-bar.com/redis-a.b.c.tar.gz'));
+
+		const downloadLocation = await redisDownload({ stdio });
+
+		expect(request).toHaveBeenCalledWith('http://foo-bar.com/redis-x.y.z.tar.gz');
+		expect(extract).toHaveBeenCalledWith(expect.objectContaining({ file: '/a/tmp/dir/redis-download/redis-x.y.z.tar.gz', cwd: '/a/tmp/dir/redis-download' }));
+		expect(execa).toHaveBeenCalledWith('make', expect.objectContaining({ cwd: '/a/tmp/dir/redis-download/redis-x.y.z' }));
+
+		expect(downloadLocation).toBe('/a/tmp/dir/redis-download/redis-x.y.z');
+	});
+
 	it('prints status updates', async () => {
 		createWriteStream.mockImplementation(() => writable);
 
