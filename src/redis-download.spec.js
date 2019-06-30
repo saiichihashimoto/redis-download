@@ -73,7 +73,6 @@ describe('redis-download', () => {
 	it('downloads, extracts, and builds the latest redis', async () => {
 		const downloadLocation = await redisDownload({ stdio });
 
-		expect(requestAsync).toHaveBeenCalledWith('https://raw.githubusercontent.com/antirez/redis-hashes/master/README');
 		expect(request).toHaveBeenCalledWith('http://foo-bar.com/redis-x.y.z.tar.gz');
 		expect(extract).toHaveBeenCalledWith(expect.objectContaining({ file: '/a/tmp/dir/redis-download/redis-x.y.z.tar.gz', cwd: '/a/tmp/dir/redis-download' }));
 		expect(execa).toHaveBeenCalledWith('make', expect.objectContaining({ cwd: '/a/tmp/dir/redis-download/redis-x.y.z' }));
@@ -84,7 +83,6 @@ describe('redis-download', () => {
 	it('downloads, extracts, and builds the specified redis', async () => {
 		const downloadLocation = await redisDownload({ stdio, version: 'u.v.w' });
 
-		expect(requestAsync).toHaveBeenCalledWith('https://raw.githubusercontent.com/antirez/redis-hashes/master/README');
 		expect(request).toHaveBeenCalledWith('http://foo-bar.com/redis-u.v.w.tar.gz');
 		expect(extract).toHaveBeenCalledWith(expect.objectContaining({ file: '/a/tmp/dir/redis-download/redis-u.v.w.tar.gz', cwd: '/a/tmp/dir/redis-download' }));
 		expect(execa).toHaveBeenCalledWith('make', expect.objectContaining({ cwd: '/a/tmp/dir/redis-download/redis-u.v.w' }));
@@ -106,19 +104,10 @@ describe('redis-download', () => {
 
 		for (let i = 0; i < 10; i += 1) {
 			response.emit('data', { length: 1048576 });
-		}
 
-		expect(stdout.write).toHaveBeenNthCalledWith(2, 'Completed: 10 % (1mb / 10mb)\r');
-		expect(stdout.write).toHaveBeenNthCalledWith(3, 'Completed: 20 % (2mb / 10mb)\r');
-		expect(stdout.write).toHaveBeenNthCalledWith(4, 'Completed: 30 % (3mb / 10mb)\r');
-		expect(stdout.write).toHaveBeenNthCalledWith(5, 'Completed: 40 % (4mb / 10mb)\r');
-		expect(stdout.write).toHaveBeenNthCalledWith(6, 'Completed: 50 % (5mb / 10mb)\r');
-		expect(stdout.write).toHaveBeenNthCalledWith(7, 'Completed: 60 % (6mb / 10mb)\r');
-		expect(stdout.write).toHaveBeenNthCalledWith(8, 'Completed: 70 % (7mb / 10mb)\r');
-		expect(stdout.write).toHaveBeenNthCalledWith(9, 'Completed: 80 % (8mb / 10mb)\r');
-		expect(stdout.write).toHaveBeenNthCalledWith(10, 'Completed: 90 % (9mb / 10mb)\r');
-		expect(stdout.write).toHaveBeenNthCalledWith(11, 'Completed: 100 % (10mb / 10mb)\r');
-		expect(stdout.write).toHaveBeenCalledTimes(11);
+			expect(stdout.write).toHaveBeenNthCalledWith(i + 2, `Completed: ${i + 1}0 % (${i + 1}mb / 10mb)\r`);
+			expect(stdout.write).toHaveBeenCalledTimes(i + 2);
+		}
 
 		response.emit('data', { length: 0 });
 
