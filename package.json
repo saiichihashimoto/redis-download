@@ -15,7 +15,7 @@
     "lib"
   ],
   "main": "./lib/redis-download.js",
-  "bin": "./lib/redis-download.js",
+  "bin": "./lib/cli.js",
   "scripts": {
     "build": "babel src --out-dir lib --source-maps --delete-dir-on-start --verbose --ignore \"**/*.spec.js\"",
     "test": "jest --verbose $(if [ -z ${CI+x} ]; then echo --watch; else echo --color --coverage; fi)",
