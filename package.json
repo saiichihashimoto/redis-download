@@ -40,9 +40,9 @@
     "tar": "4.4.10"
   },
   "devDependencies": {
-    "@babel/cli": "7.4.4",
-    "@babel/core": "7.4.5",
-    "@babel/preset-env": "7.4.5",
+    "@babel/cli": "7.5.0",
+    "@babel/core": "7.5.0",
+    "@babel/preset-env": "7.5.0",
     "@stryker-mutator/babel-transpiler": "2.0.0",
     "@stryker-mutator/core": "2.0.0",
     "@stryker-mutator/javascript-mutator": "2.0.0",
