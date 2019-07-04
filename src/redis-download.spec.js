@@ -20,49 +20,41 @@ describe('redis-download', () => {
 	const digest = jest.fn();
 	const update = jest.fn();
 
+	const originalPlatform = process.platform;
 	let stdio;
-	let response;
-	let writable;
+	let requestPipe;
+	let fileStream;
 
 	beforeEach(() => {
+		Object.defineProperty(process, 'platform', { value: originalPlatform });
+
 		stdio = [new Readable(), new Writable(), new Writable()];
 		stdio[1]._write = jest.fn(); // eslint-disable-line no-underscore-dangle
 
-		response = new Readable();
-		response._read = jest.fn(); // eslint-disable-line no-underscore-dangle
-		response.headers = { 'content-length': 10485760 };
-
-		writable = new Writable();
-		writable.close = jest.fn().mockImplementation((func) => func());
-
 		createHash.mockImplementation(() => ({ digest, update }));
-		digest.mockImplementation(() => 'THEHASH');
+		digest.mockImplementation((type) => type === 'hex' && 'THEHASH');
 		ensureDir.mockImplementation(() => Promise.resolve());
 		execa.mockImplementation(() => Promise.resolve());
 		exists.mockImplementation(() => Promise.resolve(false));
 		extract.mockImplementation(() => Promise.resolve());
-		readdir.mockImplementation(() => Promise.resolve([]));
+		readdir.mockImplementation(() => Promise.resolve(['redis-a.b.c', 'redis-a.b.c.tar.gz']));
 		rename.mockImplementation(() => Promise.resolve());
-		requestAsync.mockImplementation(() => Promise.resolve('hash redis-u.v.w.tar.gz algo THEHASH http://foo-bar.com/redis-u.v.w.tar.gz\nhash redis-x.y.z.tar.gz algo THEHASH http://foo-bar.com/redis-x.y.z.tar.gz'));
+		requestAsync.mockImplementation((url) => url === 'https://raw.githubusercontent.com/antirez/redis-hashes/master/README' && Promise.resolve('hash redis-u.v.w.tar.gz algo THEHASH http://foo-bar.com/redis-u.v.w.tar.gz\nhash redis-x.y.z.tar.gz algo THEHASH http://foo-bar.com/redis-x.y.z.tar.gz'));
 		tmpdir.mockImplementation(() => '/a/tmp/dir');
 
-		request.mockImplementation(() => {
-			const readable = new Readable();
-			readable._read = jest.fn(); // eslint-disable-line no-underscore-dangle
+		requestPipe = new Readable();
+		requestPipe._read = jest.fn(); // eslint-disable-line no-underscore-dangle
+		request.mockImplementation(() => requestPipe);
 
-			setImmediate(() => {
-				readable.emit('response', response);
-			});
-
-			return readable;
-		});
+		fileStream = new Writable();
+		fileStream.close = jest.fn().mockImplementation((func) => func());
 
 		createWriteStream.mockImplementation(() => {
 			setImmediate(() => {
-				writable.emit('finish');
+				fileStream.emit('finish');
 			});
 
-			return writable;
+			return fileStream;
 		});
 	});
 
@@ -70,187 +62,293 @@ describe('redis-download', () => {
 		jest.resetAllMocks();
 	});
 
-	it('downloads, extracts, and builds the latest redis', async () => {
-		const downloadLocation = await redisDownload({ stdio });
+	it('returns location of latest redis download', () => expect(redisDownload({ stdio })).resolves.toBe('/a/tmp/dir/redis-download/redis-x.y.z'));
 
-		expect(requestAsync).toHaveBeenCalledWith('https://raw.githubusercontent.com/antirez/redis-hashes/master/README');
-		expect(request).toHaveBeenCalledWith('http://foo-bar.com/redis-x.y.z.tar.gz');
-		expect(extract).toHaveBeenCalledWith(expect.objectContaining({ file: '/a/tmp/dir/redis-download/redis-x.y.z.tar.gz', cwd: '/a/tmp/dir/redis-download' }));
-		expect(execa).toHaveBeenCalledWith('make', expect.objectContaining({ cwd: '/a/tmp/dir/redis-download/redis-x.y.z' }));
+	it('returns location of (specified) latest redis download', () => expect(redisDownload({ stdio, version: 'latest' })).resolves.toBe('/a/tmp/dir/redis-download/redis-x.y.z'));
 
-		expect(downloadLocation).toBe('/a/tmp/dir/redis-download/redis-x.y.z');
+	it('returns location of specified redis download', () => expect(redisDownload({ stdio, version: 'u.v.w' })).resolves.toBe('/a/tmp/dir/redis-download/redis-u.v.w'));
+
+	it('ignore commented lines', () => {
+		requestAsync.mockImplementation(() => Promise.resolve('hash redis-u.v.w.tar.gz algo THEHASH http://foo-bar.com/redis-u.v.w.tar.gz\n#hash redis-x.y.z.tar.gz algo THEHASH http://foo-bar.com/redis-x.y.z.tar.gz'));
+
+		return expect(redisDownload({ stdio })).resolves.toBe('/a/tmp/dir/redis-download/redis-u.v.w');
 	});
 
-	it('downloads, extracts, and builds the specified redis', async () => {
-		const downloadLocation = await redisDownload({ stdio, version: 'u.v.w' });
+	describe('request', () => {
+		it('requests latest tar', async () => {
+			await redisDownload({ stdio });
 
-		expect(requestAsync).toHaveBeenCalledWith('https://raw.githubusercontent.com/antirez/redis-hashes/master/README');
-		expect(request).toHaveBeenCalledWith('http://foo-bar.com/redis-u.v.w.tar.gz');
-		expect(extract).toHaveBeenCalledWith(expect.objectContaining({ file: '/a/tmp/dir/redis-download/redis-u.v.w.tar.gz', cwd: '/a/tmp/dir/redis-download' }));
-		expect(execa).toHaveBeenCalledWith('make', expect.objectContaining({ cwd: '/a/tmp/dir/redis-download/redis-u.v.w' }));
-
-		expect(downloadLocation).toBe('/a/tmp/dir/redis-download/redis-u.v.w');
-	});
-
-	it('prints status updates', async () => {
-		createWriteStream.mockImplementation(() => writable);
-
-		const stdout = stdio[1];
-		const downloadLocation = redisDownload({ stdio });
-
-		await new Promise((resolve) => {
-			stdout.write = jest.fn().mockImplementationOnce(() => resolve());
+			expect(request).toHaveBeenCalledWith('http://foo-bar.com/redis-x.y.z.tar.gz');
 		});
 
-		expect(stdout.write).toHaveBeenNthCalledWith(1, 'Completed: 0 % (0mb / 10mb)\r');
+		it('requests specified tar', async () => {
+			await redisDownload({ stdio, version: 'u.v.w' });
 
-		for (let i = 0; i < 10; i += 1) {
-			response.emit('data', { length: 1048576 });
-		}
+			expect(request).toHaveBeenCalledWith('http://foo-bar.com/redis-u.v.w.tar.gz');
+		});
 
-		expect(stdout.write).toHaveBeenNthCalledWith(2, 'Completed: 10 % (1mb / 10mb)\r');
-		expect(stdout.write).toHaveBeenNthCalledWith(3, 'Completed: 20 % (2mb / 10mb)\r');
-		expect(stdout.write).toHaveBeenNthCalledWith(4, 'Completed: 30 % (3mb / 10mb)\r');
-		expect(stdout.write).toHaveBeenNthCalledWith(5, 'Completed: 40 % (4mb / 10mb)\r');
-		expect(stdout.write).toHaveBeenNthCalledWith(6, 'Completed: 50 % (5mb / 10mb)\r');
-		expect(stdout.write).toHaveBeenNthCalledWith(7, 'Completed: 60 % (6mb / 10mb)\r');
-		expect(stdout.write).toHaveBeenNthCalledWith(8, 'Completed: 70 % (7mb / 10mb)\r');
-		expect(stdout.write).toHaveBeenNthCalledWith(9, 'Completed: 80 % (8mb / 10mb)\r');
-		expect(stdout.write).toHaveBeenNthCalledWith(10, 'Completed: 90 % (9mb / 10mb)\r');
-		expect(stdout.write).toHaveBeenNthCalledWith(11, 'Completed: 100 % (10mb / 10mb)\r');
-		expect(stdout.write).toHaveBeenCalledTimes(11);
+		it('doesn\'t request existing tar', async () => {
+			readdir.mockImplementation(() => Promise.resolve(['redis-x.y.z.tar.gz']));
 
-		response.emit('data', { length: 0 });
+			await expect(redisDownload({ stdio })).resolves.toBe('/a/tmp/dir/redis-download/redis-x.y.z');
 
-		expect(stdout.write).toHaveBeenCalledTimes(11);
+			expect(request).not.toHaveBeenCalledWith(expect.anything());
+		});
 
-		writable.emit('finish');
+		it('fails if request fails', () => {
+			const err = new Error();
+			createWriteStream.mockImplementation(() => fileStream);
+			request.mockImplementation(() => {
+				setImmediate(() => {
+					requestPipe.emit('error', err);
+				});
 
-		await downloadLocation;
+				return requestPipe;
+			});
+
+			return expect(redisDownload({ stdio })).rejects.toBe(err);
+		});
+
+		it('fails if hashes don\'t match', () => {
+			digest.mockImplementation(() => 'NOTTHEHASH');
+
+			return expect(redisDownload({ stdio })).rejects.toThrow('The hashes don\'t match!');
+		});
+
+		describe('data', () => {
+			let dataReady;
+			let promise;
+			let inputStream;
+			let stdout;
+
+			beforeEach(() => {
+				[, stdout] = stdio;
+				stdout.write = jest.fn();
+
+				inputStream = new Readable();
+				inputStream._read = jest.fn(); // eslint-disable-line no-underscore-dangle
+				inputStream.headers = { 'content-length': 10485760 };
+
+				createWriteStream.mockImplementation(() => fileStream);
+
+				dataReady = () => new Promise((resolve) => {
+					request.mockImplementation(() => {
+						setImmediate(() => {
+							requestPipe.emit('response', inputStream);
+							resolve();
+						});
+
+						return requestPipe;
+					});
+
+					promise = redisDownload({ stdio });
+				});
+			});
+
+			afterEach(async () => {
+				fileStream.emit('finish');
+
+				await promise;
+			});
+
+			it('updates the hash', async () => {
+				await dataReady();
+
+				expect(update).not.toHaveBeenCalledWith(expect.anything());
+
+				for (let i = 0; i < 10; i += 1) {
+					const data = { length: 1048576 };
+					inputStream.emit('data', data);
+
+					expect(update).toHaveBeenNthCalledWith(i + 1, data);
+				}
+
+				const data = { length: 0 };
+				inputStream.emit('data', data);
+
+				expect(update).toHaveBeenCalledTimes(11);
+			});
+
+			it('writes to stdout', async () => {
+				await dataReady();
+
+				expect(stdout.write).toHaveBeenNthCalledWith(1, 'Completed: 0 % (0mb / 10mb)\r');
+
+				for (let i = 0; i < 10; i += 1) {
+					inputStream.emit('data', { length: 1048576 });
+
+					expect(stdout.write).toHaveBeenNthCalledWith(i + 2, `Completed: ${i + 1}0 % (${i + 1}mb / 10mb)\r`);
+				}
+
+				inputStream.emit('data', { length: 0 });
+
+				expect(stdout.write).toHaveBeenCalledTimes(11);
+			});
+
+			it('writes to stdout with win32 newlines', async () => {
+				Object.defineProperty(process, 'platform', { value: 'win32' });
+
+				await dataReady();
+
+				expect(stdout.write).toHaveBeenNthCalledWith(1, 'Completed: 0 % (0mb / 10mb)\x1b[0G');
+
+				for (let i = 0; i < 10; i += 1) {
+					inputStream.emit('data', { length: 1048576 });
+
+					expect(stdout.write).toHaveBeenNthCalledWith(i + 2, `Completed: ${i + 1}0 % (${i + 1}mb / 10mb)\x1b[0G`);
+				}
+
+				inputStream.emit('data', { length: 0 });
+
+				expect(stdout.write).toHaveBeenCalledTimes(11);
+			});
+		});
 	});
 
-	it('fails if hashes don\'t match', async () => {
-		digest.mockImplementation(() => 'NOTTHEHASH');
+	describe('rename', () => {
+		it('requests before renaming', async () => {
+			request.mockImplementation(() => {
+				expect(rename).not.toHaveBeenCalledWith(expect.anything(), expect.anything());
 
-		await expect(redisDownload({ stdio })).rejects.toThrow('The hashes don\'t match!');
+				return requestPipe;
+			});
+			rename.mockImplementation(() => {
+				expect(request).toHaveBeenCalledWith(expect.anything());
+
+				return Promise.resolve();
+			});
+
+			await redisDownload({ stdio });
+		});
+
+		it('renames latest tar', async () => {
+			await redisDownload({ stdio });
+
+			expect(rename).toHaveBeenCalledWith('/a/tmp/dir/redis-download/redis-x.y.z.tar.gz.downloading', '/a/tmp/dir/redis-download/redis-x.y.z.tar.gz');
+		});
+
+		it('renames specified tar', async () => {
+			await redisDownload({ stdio, version: 'u.v.w' });
+
+			expect(rename).toHaveBeenCalledWith('/a/tmp/dir/redis-download/redis-u.v.w.tar.gz.downloading', '/a/tmp/dir/redis-download/redis-u.v.w.tar.gz');
+		});
+
+		it('doesn\'t rename existing tar', async () => {
+			readdir.mockImplementation(() => Promise.resolve(['redis-x.y.z.tar.gz']));
+
+			await expect(redisDownload({ stdio })).resolves.toBe('/a/tmp/dir/redis-download/redis-x.y.z');
+
+			expect(rename).not.toHaveBeenCalledWith(expect.anything(), expect.anything());
+		});
+
+		it('fails if rename fails', () => {
+			const err = new Error();
+
+			rename.mockImplementation(() => Promise.reject(err));
+
+			return expect(redisDownload({ stdio })).rejects.toBe(err);
+		});
 	});
 
-	it('skips downloading if the tar exists', async () => {
-		readdir.mockImplementation(() => Promise.resolve(['redis-u.v.w.tar.gz', 'redis-x.y.z.tar.gz']));
+	describe('extract', () => {
+		it('renames before extracting', async () => {
+			rename.mockImplementation(() => {
+				expect(extract).not.toHaveBeenCalledWith(expect.anything());
 
-		const downloadLocation = await redisDownload({ stdio });
+				return Promise.resolve();
+			});
+			extract.mockImplementation(() => {
+				expect(rename).toHaveBeenCalledWith(expect.anything(), expect.anything());
 
-		expect(requestAsync).toHaveBeenCalledWith('https://raw.githubusercontent.com/antirez/redis-hashes/master/README');
-		expect(request).not.toHaveBeenCalled();
-		expect(extract).toHaveBeenCalledWith(expect.objectContaining({ file: '/a/tmp/dir/redis-download/redis-x.y.z.tar.gz', cwd: '/a/tmp/dir/redis-download' }));
-		expect(execa).toHaveBeenCalledWith('make', expect.objectContaining({ cwd: '/a/tmp/dir/redis-download/redis-x.y.z' }));
+				return Promise.resolve();
+			});
 
-		expect(downloadLocation).toBe('/a/tmp/dir/redis-download/redis-x.y.z');
+			await redisDownload({ stdio });
+		});
+
+		it('extracts latest version', async () => {
+			await redisDownload({ stdio });
+
+			expect(extract).toHaveBeenCalledWith(expect.objectContaining({ file: '/a/tmp/dir/redis-download/redis-x.y.z.tar.gz', cwd: '/a/tmp/dir/redis-download' }));
+		});
+
+		it('extracts specified version', async () => {
+			await redisDownload({ stdio, version: 'u.v.w' });
+
+			expect(extract).toHaveBeenCalledWith(expect.objectContaining({ file: '/a/tmp/dir/redis-download/redis-u.v.w.tar.gz', cwd: '/a/tmp/dir/redis-download' }));
+		});
+
+		it('doesn\'t extract already extracted version', async () => {
+			readdir.mockImplementation(() => Promise.resolve(['redis-x.y.z']));
+
+			await expect(redisDownload({ stdio })).resolves.toBe('/a/tmp/dir/redis-download/redis-x.y.z');
+
+			expect(extract).not.toHaveBeenCalledWith(expect.anything());
+		});
+
+		it('fails if extract fails', () => {
+			const err = new Error();
+
+			extract.mockImplementation(() => Promise.reject(err));
+
+			return expect(redisDownload({ stdio })).rejects.toBe(err);
+		});
 	});
 
-	it('skips downloading if the specified tar exists', async () => {
-		readdir.mockImplementation(() => Promise.resolve(['redis-u.v.w.tar.gz', 'redis-x.y.z.tar.gz']));
+	describe('make', () => {
+		it('extracts before making', async () => {
+			extract.mockImplementation(() => {
+				expect(execa).not.toHaveBeenCalledWith('make', expect.anything());
 
-		const downloadLocation = await redisDownload({ stdio, version: 'u.v.w' });
+				return Promise.resolve();
+			});
+			execa.mockImplementation((cmd) => {
+				if (cmd === 'make') {
+					expect(extract).toHaveBeenCalledWith(expect.anything());
+				}
 
-		expect(requestAsync).not.toHaveBeenCalled();
-		expect(request).not.toHaveBeenCalled();
-		expect(extract).toHaveBeenCalledWith(expect.objectContaining({ file: '/a/tmp/dir/redis-download/redis-u.v.w.tar.gz', cwd: '/a/tmp/dir/redis-download' }));
-		expect(execa).toHaveBeenCalledWith('make', expect.objectContaining({ cwd: '/a/tmp/dir/redis-download/redis-u.v.w' }));
+				return Promise.resolve();
+			});
 
-		expect(downloadLocation).toBe('/a/tmp/dir/redis-download/redis-u.v.w');
-	});
+			await redisDownload({ stdio });
+		});
 
-	it('skips downloading and extracting if the directory exists', async () => {
-		readdir.mockImplementation(() => Promise.resolve(['redis-u.v.w', 'redis-x.y.z', 'redis-x.y.z.tar.gz']));
+		it('makes latest build', async () => {
+			await redisDownload({ stdio });
 
-		const downloadLocation = await redisDownload({ stdio });
+			expect(execa).toHaveBeenCalledWith('make', expect.objectContaining({ cwd: '/a/tmp/dir/redis-download/redis-x.y.z', stdio }));
+		});
 
-		expect(requestAsync).toHaveBeenCalledWith('https://raw.githubusercontent.com/antirez/redis-hashes/master/README');
-		expect(request).not.toHaveBeenCalled();
-		expect(extract).not.toHaveBeenCalled();
-		expect(execa).toHaveBeenCalledWith('make', expect.objectContaining({ cwd: '/a/tmp/dir/redis-download/redis-x.y.z' }));
+		it('makes specified build', async () => {
+			await redisDownload({ stdio, version: 'u.v.w' });
 
-		expect(downloadLocation).toBe('/a/tmp/dir/redis-download/redis-x.y.z');
-	});
+			expect(execa).toHaveBeenCalledWith('make', expect.objectContaining({ cwd: '/a/tmp/dir/redis-download/redis-u.v.w', stdio }));
+		});
 
-	it('skips downloading and extracting if the specified directory exists', async () => {
-		readdir.mockImplementation(() => Promise.resolve(['redis-u.v.w', 'redis-x.y.z', 'redis-u.v.w.tar.gz']));
+		it('doesn\'t make already build', async () => {
+			readdir.mockImplementation(() => Promise.resolve(['redis-x.y.z']));
+			exists.mockImplementation((binaryName) => Promise.resolve(binaryName.startsWith('/a/tmp/dir/redis-download/redis-x.y.z/src/')));
 
-		const downloadLocation = await redisDownload({ stdio, version: 'u.v.w' });
+			await expect(redisDownload({ stdio })).resolves.toBe('/a/tmp/dir/redis-download/redis-x.y.z');
 
-		expect(requestAsync).not.toHaveBeenCalled();
-		expect(request).not.toHaveBeenCalled();
-		expect(extract).not.toHaveBeenCalled();
-		expect(execa).toHaveBeenCalledWith('make', expect.objectContaining({ cwd: '/a/tmp/dir/redis-download/redis-u.v.w' }));
+			expect(execa).not.toHaveBeenCalledWith('make', expect.anything());
+		});
 
-		expect(downloadLocation).toBe('/a/tmp/dir/redis-download/redis-u.v.w');
-	});
+		it('remakes if partially built', async () => {
+			readdir.mockImplementation(() => Promise.resolve(['redis-x.y.z']));
+			exists.mockImplementation((binaryName) => Promise.resolve(binaryName.startsWith('/a/tmp/dir/redis-download/redis-x.y.z/src/redis-benchmark')));
 
-	it('skips downloading, extracting, and building if the build exists', async () => {
-		const binaries = [
-			'/a/tmp/dir/redis-download/redis-u.v.w/src/redis-benchmark',
-			'/a/tmp/dir/redis-download/redis-u.v.w/src/redis-check-aof',
-			'/a/tmp/dir/redis-download/redis-u.v.w/src/redis-check-rdb',
-			'/a/tmp/dir/redis-download/redis-u.v.w/src/redis-cli',
-			'/a/tmp/dir/redis-download/redis-u.v.w/src/redis-sentinel',
-			'/a/tmp/dir/redis-download/redis-u.v.w/src/redis-server',
-			'/a/tmp/dir/redis-download/redis-x.y.z/src/redis-benchmark',
-			'/a/tmp/dir/redis-download/redis-x.y.z/src/redis-check-aof',
-			'/a/tmp/dir/redis-download/redis-x.y.z/src/redis-check-rdb',
-			'/a/tmp/dir/redis-download/redis-x.y.z/src/redis-cli',
-			'/a/tmp/dir/redis-download/redis-x.y.z/src/redis-sentinel',
-			'/a/tmp/dir/redis-download/redis-x.y.z/src/redis-server',
-		];
+			await expect(redisDownload({ stdio })).resolves.toBe('/a/tmp/dir/redis-download/redis-x.y.z');
 
-		exists.mockImplementation((filePath) => Promise.resolve(binaries.includes(filePath)));
-		readdir.mockImplementation(() => Promise.resolve(['redis-u.v.w', 'redis-x.y.z', 'redis-x.y.z.tar.gz']));
+			expect(execa).toHaveBeenCalledWith('make', expect.anything());
+		});
 
-		const downloadLocation = await redisDownload({ stdio });
+		it('fails if make fails', () => {
+			const err = new Error();
 
-		expect(requestAsync).toHaveBeenCalledWith('https://raw.githubusercontent.com/antirez/redis-hashes/master/README');
-		expect(request).not.toHaveBeenCalled();
-		expect(extract).not.toHaveBeenCalled();
-		expect(execa).not.toHaveBeenCalled();
+			execa.mockImplementation((cmd) => (cmd === 'make' ? Promise.reject(err) : Promise.resolve()));
 
-		expect(downloadLocation).toBe('/a/tmp/dir/redis-download/redis-x.y.z');
-	});
-
-	it('skips downloading, extracting, and building if the specified build exists', async () => {
-		const binaries = [
-			'/a/tmp/dir/redis-download/redis-u.v.w/src/redis-benchmark',
-			'/a/tmp/dir/redis-download/redis-u.v.w/src/redis-check-aof',
-			'/a/tmp/dir/redis-download/redis-u.v.w/src/redis-check-rdb',
-			'/a/tmp/dir/redis-download/redis-u.v.w/src/redis-cli',
-			'/a/tmp/dir/redis-download/redis-u.v.w/src/redis-sentinel',
-			'/a/tmp/dir/redis-download/redis-u.v.w/src/redis-server',
-			'/a/tmp/dir/redis-download/redis-x.y.z/src/redis-benchmark',
-			'/a/tmp/dir/redis-download/redis-x.y.z/src/redis-check-aof',
-			'/a/tmp/dir/redis-download/redis-x.y.z/src/redis-check-rdb',
-			'/a/tmp/dir/redis-download/redis-x.y.z/src/redis-cli',
-			'/a/tmp/dir/redis-download/redis-x.y.z/src/redis-sentinel',
-			'/a/tmp/dir/redis-download/redis-x.y.z/src/redis-server',
-		];
-
-		exists.mockImplementation((filePath) => Promise.resolve(binaries.includes(filePath)));
-		readdir.mockImplementation(() => Promise.resolve(['redis-u.v.w', 'redis-x.y.z', 'redis-u.v.w.tar.gz']));
-
-		const downloadLocation = await redisDownload({ stdio, version: 'u.v.w' });
-
-		expect(requestAsync).not.toHaveBeenCalled();
-		expect(request).not.toHaveBeenCalled();
-		expect(extract).not.toHaveBeenCalled();
-		expect(execa).not.toHaveBeenCalled();
-
-		expect(downloadLocation).toBe('/a/tmp/dir/redis-download/redis-u.v.w');
-	});
-
-	it('downloads to the specified directory', async () => {
-		const downloadLocation = await redisDownload({ stdio, downloadDir: '/a/different/dir' });
-
-		expect(extract).toHaveBeenCalledWith(expect.objectContaining({ file: '/a/different/dir/redis-download/redis-x.y.z.tar.gz', cwd: '/a/different/dir/redis-download' }));
-		expect(execa).toHaveBeenCalledWith('make', expect.objectContaining({ cwd: '/a/different/dir/redis-download/redis-x.y.z' }));
-
-		expect(downloadLocation).toBe('/a/different/dir/redis-download/redis-x.y.z');
+			return expect(redisDownload({ stdio })).rejects.toBe(err);
+		});
 	});
 });

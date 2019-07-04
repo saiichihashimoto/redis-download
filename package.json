@@ -15,7 +15,7 @@
     "lib"
   ],
   "main": "./lib/redis-download.js",
-  "bin": "./lib/redis-download.js",
+  "bin": "./lib/cli.js",
   "scripts": {
     "build": "babel src --out-dir lib --source-maps --delete-dir-on-start --verbose --ignore \"**/*.spec.js\"",
     "test": "jest --verbose $(if [ -z ${CI+x} ]; then echo --watch; else echo --color --coverage; fi)"
@@ -43,6 +43,10 @@
     "@babel/cli": "7.4.4",
     "@babel/core": "7.4.5",
     "@babel/preset-env": "7.4.5",
+    "@stryker-mutator/babel-transpiler": "2.0.0",
+    "@stryker-mutator/core": "2.0.0",
+    "@stryker-mutator/javascript-mutator": "2.0.0",
+    "@stryker-mutator/jest-runner": "2.0.0",
     "cz-conventional-changelog": "2.1.0",
     "eslint-config-saiichihashimoto": "1.2.38",
     "husky": "3.0.0",

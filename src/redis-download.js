@@ -1,7 +1,6 @@
 #!/usr/bin/env node
 import execa from 'execa';
 import path from 'path';
-import program from 'commander';
 import request from 'request';
 import requestAsync from 'request-promise-native';
 import { createHash } from 'crypto';
@@ -10,7 +9,6 @@ import { extract } from 'tar';
 import { tmpdir } from 'os';
 
 const redisHashesUrl = 'https://raw.githubusercontent.com/antirez/redis-hashes/master/README';
-const crReturn = (process.platform === 'win32') ? '\x1b[0G' : '\r';
 const binaryNames = [
 	'redis-benchmark',
 	'redis-check-aof',
@@ -21,18 +19,16 @@ const binaryNames = [
 ];
 
 async function getRedisHashes() {
-	return (await requestAsync(redisHashesUrl))
+	const result = (await requestAsync(redisHashesUrl))
 		.split('\n')
 		.filter((line) => line && line.charAt(0) !== '#')
 		.map((line) => line.split(/\s+/));
+	return result;
 }
 
-async function downloadTar({ root, filename, algo, digest, url, stdio: [, stdout] }) {
-	const tar = `${root}/${filename}`;
-	const temp = `${tar}.downloading`;
-
-	await new Promise((resolve, reject) => {
-		const fileStream = createWriteStream(temp);
+function downloadTar({ filename, algo, digest, url, stdio: [, stdout] }) {
+	return new Promise((resolve, reject) => {
+		const fileStream = createWriteStream(filename);
 		const hash = createHash(algo);
 
 		request(url)
@@ -40,18 +36,22 @@ async function downloadTar({ root, filename, algo, digest, url, stdio: [, stdout
 				const total = parseInt(response.headers['content-length'], 10);
 				const totalMB = Math.round(total / 1048576 * 10) / 10;
 				let completed = 0;
-				let lastStdout = `Completed: 0 % (0mb / ${totalMB}mb)${crReturn}`;
-				stdout.write(lastStdout);
+				const generateOutput = () => `Completed: ${Math.round(100.0 * completed / total * 10) / 10} % (${Math.round(completed / 1048576 * 10) / 10}mb / ${totalMB}mb)${(process.platform === 'win32') ? '\x1b[0G' : '\r'}`;
+
+				let lastStdout = generateOutput();
+				if (stdout) {
+					stdout.write(lastStdout);
+				}
 
 				response.on('data', (chunk) => {
 					hash.update(chunk);
 					completed += chunk.length;
-					const completedPercentage = Math.round(100.0 * completed / total * 10) / 10;
-					const completedMB = Math.round(completed / 1048576 * 10) / 10;
-					const text = `Completed: ${completedPercentage} % (${completedMB}mb / ${totalMB}mb)${crReturn}`;
+					const text = generateOutput(completed);
 					if (lastStdout !== text) {
 						lastStdout = text;
-						stdout.write(text);
+						if (stdout) {
+							stdout.write(text);
+						}
 					}
 				});
 			})
@@ -61,20 +61,16 @@ async function downloadTar({ root, filename, algo, digest, url, stdio: [, stdout
 		fileStream.on('finish', () => {
 			fileStream.close(() => {
 				if (hash.digest('hex') === digest) {
-					resolve(temp);
+					resolve();
 				} else {
 					reject(new Error('The hashes don\'t match!'));
 				}
 			});
 		});
 	});
-
-	await rename(temp, tar);
-
-	return tar;
 }
 
-async function redisDownload({
+export default async function redisDownload({
 	version: specifiedVersion,
 	downloadDir = tmpdir(),
 	stdio = [process.stdin, process.stdout, process.stderr],
@@ -92,72 +88,38 @@ async function redisDownload({
 		[,, version] = filename.match(/^(redis-)?(.*?)(.tar.gz)?$/);
 	}
 
-	const files = (await readdir(root))
+	const contents = (await readdir(root))
+		.filter((filename) => filename.match(new RegExp(`^(redis-)?${version}`)))
 		.sort()
-		.filter((filename) => filename.match(new RegExp(`^(redis-)?${version}(.tar.gz)?$`, 'g')))
 		.map((filename) => path.resolve(root, filename));
 
-	const directories = files
-		.filter((file) => !file.match(/\.tar\.gz$/));
+	let redisDirectory = contents.find((filename) => !filename.match(new RegExp('.tar.gz$')));
 
-	const builds = (await Promise.all(directories.map(
-		(directory) => Promise.all(binaryNames.map(
-			(binaryName) => exists(path.resolve(directory, 'src', binaryName))
-				.then((binaryExists) => {
-					if (!binaryExists) {
-						throw new Error('doesn\'t exist');
-					}
-					return true;
-				}),
-		))
-			.then(() => directory, () => null),
-	)))
-		.filter(Boolean);
+	if (redisDirectory) {
+		if ((await Promise.all(binaryNames.map((binaryName) => exists(path.resolve(redisDirectory, 'src', binaryName))))).every((binaryExists) => binaryExists)) {
+			return redisDirectory;
+		}
+	} else {
+		let tar = contents.find((filename) => filename.match(new RegExp('.tar.gz$')));
 
-	let builtRedisDirectory = builds[0];
+		if (!tar) {
+			const [, tarName, algo, digest, url] = (redisHashes || await getRedisHashes())
+				.find(([, filename]) => filename.match(new RegExp(`^(redis-)?${version}.tar.gz$`)));
 
-	if (!builtRedisDirectory) {
-		let redisDirectory = directories[0];
+			tar = path.resolve(root, tarName);
+			const temp = `${tar}.downloading`;
 
-		if (!redisDirectory) {
-			let tar = files
-				.filter((folderName) => folderName.match(/\.tar\.gz$/))[0];
+			await downloadTar({ filename: temp, algo, digest, url, stdio });
 
-			if (!tar) {
-				redisHashes = redisHashes || await getRedisHashes();
-				const redisHash = redisHashes
-					.filter(([, filename]) => filename.match(new RegExp(`^(redis-)?${version}.tar.gz$`, 'g')))[0];
-
-				const [, filename, algo, digest, url] = redisHash;
-				tar = await downloadTar({ root, filename, algo, digest, url, stdio });
-			}
-
-			await extract({ file: tar, cwd: root });
-			redisDirectory = tar.replace(/\.tar\.gz$/, '');
+			await rename(temp, tar);
 		}
 
-		await execa('make', { cwd: redisDirectory, stdio });
-		builtRedisDirectory = redisDirectory;
+		await extract({ file: tar, cwd: root });
+
+		redisDirectory = tar.replace(/\.tar\.gz$/, '');
 	}
 
-	return builtRedisDirectory;
+	await execa('make', { cwd: redisDirectory, stdio });
+
+	return redisDirectory;
 }
-
-/* istanbul ignore next line */
-if (require.main === module) {
-	program
-		.option('--download-dir <downloadDir>', 'Download path')
-		.option('--version <version>', 'Redis version to download, "latest" is by default')
-		.parse(process.argv);
-
-	redisDownload(program)
-		// eslint-disable-next-line no-console, promise/prefer-await-to-then
-		.then((redisDirectory) => console.log(redisDirectory))
-		.catch((err) => { // eslint-disable-line promise/prefer-await-to-callbacks
-			console.error(err); // eslint-disable-line no-console
-
-			process.exit(err.code || 1);
-		});
-}
-
-export default redisDownload;
