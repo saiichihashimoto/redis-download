@@ -15,7 +15,7 @@ script:
   - npm test
   - ./tests/end-to-end.sh
 after_success:
-  - cat ./coverage/lcov.info | npx coveralls --verbose
+  - cat ./coverage/lcov.info | npx coveralls
 jobs:
   include:
     - stage: release
