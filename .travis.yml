@@ -13,8 +13,7 @@ notifications:
     on_failure: always
 script:
   - npm test
-  - npm run build
-  - npm run test:e2e
+  - ./tests/end-to-end.sh
 after_success:
   - cat ./coverage/lcov.info | npx coveralls --verbose
 jobs:
