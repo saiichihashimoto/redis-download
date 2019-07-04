@@ -18,8 +18,7 @@
   "bin": "./lib/redis-download.js",
   "scripts": {
     "build": "babel src --out-dir lib --source-maps --delete-dir-on-start --verbose --ignore \"**/*.spec.js\"",
-    "test": "jest --verbose $(if [ -z ${CI+x} ]; then echo --watch; else echo --color --coverage; fi)",
-    "test:e2e": "./tests/end-to-end.sh"
+    "test": "jest --verbose $(if [ -z ${CI+x} ]; then echo --watch; else echo --color --coverage; fi)"
   },
   "config": {
     "commitizen": {
