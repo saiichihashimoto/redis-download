@@ -36,7 +36,7 @@ function downloadTar({ filename, algo, digest, url, stdio: [, stdout] }) {
 				const total = parseInt(response.headers['content-length'], 10);
 				const totalMB = Math.round(total / 1048576 * 10) / 10;
 				let completed = 0;
-				const generateOutput = () => `Completed: ${Math.round(100.0 * completed / total * 10) / 10} % (${Math.round(completed / 1048576 * 10) / 10}mb / ${totalMB}mb)${(process.platform === 'win32') ? '\x1b[0G' : '\r'}`;
+				const generateOutput = () => `Completed: ${Math.round(100 * completed / total * 10) / 10} % (${Math.round(completed / 1048576 * 10) / 10}mb / ${totalMB}mb)${(process.platform === 'win32') ? '\u001B[0G' : '\r'}`;
 
 				let lastStdout = generateOutput();
 				if (stdout) {

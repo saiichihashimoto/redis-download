@@ -190,12 +190,12 @@ describe('redis-download', () => {
 
 				await dataReady();
 
-				expect(stdout.write).toHaveBeenNthCalledWith(1, 'Completed: 0 % (0mb / 10mb)\x1b[0G');
+				expect(stdout.write).toHaveBeenNthCalledWith(1, 'Completed: 0 % (0mb / 10mb)\u001B[0G');
 
 				for (let i = 0; i < 10; i += 1) {
 					inputStream.emit('data', { length: 1048576 });
 
-					expect(stdout.write).toHaveBeenNthCalledWith(i + 2, `Completed: ${i + 1}0 % (${i + 1}mb / 10mb)\x1b[0G`);
+					expect(stdout.write).toHaveBeenNthCalledWith(i + 2, `Completed: ${i + 1}0 % (${i + 1}mb / 10mb)\u001B[0G`);
 				}
 
 				inputStream.emit('data', { length: 0 });
