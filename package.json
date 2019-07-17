@@ -40,7 +40,7 @@
     "tar": "4.4.10"
   },
   "devDependencies": {
-    "@babel/cli": "7.5.0",
+    "@babel/cli": "7.5.5",
     "@babel/core": "7.5.4",
     "@babel/preset-env": "7.5.4",
     "@stryker-mutator/babel-transpiler": "2.0.2",
