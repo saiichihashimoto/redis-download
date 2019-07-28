@@ -1,12 +1,12 @@
-#!/usr/bin/env node
-import execa from 'execa';
 import path from 'path';
+import { createHash } from 'crypto';
+import { tmpdir } from 'os';
+
+import execa from 'execa';
 import request from 'request';
 import requestAsync from 'request-promise-native';
-import { createHash } from 'crypto';
 import { createWriteStream, ensureDir, exists, readdir, rename } from 'fs-extra';
 import { extract } from 'tar';
-import { tmpdir } from 'os';
 
 const redisHashesUrl = 'https://raw.githubusercontent.com/antirez/redis-hashes/master/README';
 const binaryNames = [
@@ -23,6 +23,7 @@ async function getRedisHashes() {
 		.split('\n')
 		.filter((line) => line && line.charAt(0) !== '#')
 		.map((line) => line.split(/\s+/));
+
 	return result;
 }
 
@@ -36,7 +37,7 @@ function downloadTar({ filename, algo, digest, url, stdio: [, stdout] }) {
 				const total = parseInt(response.headers['content-length'], 10);
 				const totalMB = Math.round(total / 1048576 * 10) / 10;
 				let completed = 0;
-				const generateOutput = () => `Completed: ${Math.round(100 * completed / total * 10) / 10} % (${Math.round(completed / 1048576 * 10) / 10}mb / ${totalMB}mb)${(process.platform === 'win32') ? '\u001B[0G' : '\r'}`;
+				const generateOutput = () => `Completed: ${Math.round(100 * completed / total * 10) / 10} % (${Math.round(completed / 1048576 * 10) / 10}mb / ${totalMB}mb)${process.platform === 'win32' ? '\u001B[0G' : '\r'}`;
 
 				let lastStdout = generateOutput();
 				if (stdout) {

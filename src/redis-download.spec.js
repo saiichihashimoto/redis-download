@@ -1,11 +1,13 @@
+import { Readable, Writable } from 'stream';
+import { createHash } from 'crypto';
+import { tmpdir } from 'os';
+
 import execa from 'execa';
 import request from 'request';
 import requestAsync from 'request-promise-native';
-import { Readable, Writable } from 'stream';
-import { createHash } from 'crypto';
 import { createWriteStream, ensureDir, exists, readdir, rename } from 'fs-extra';
 import { extract } from 'tar';
-import { tmpdir } from 'os';
+
 import redisDownload from './redis-download';
 
 jest.mock('crypto');

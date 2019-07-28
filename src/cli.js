@@ -4,6 +4,7 @@ import program from 'commander';
 import updateNotifier from 'update-notifier';
 
 import pkg from '../package.json';
+
 import redisDownload from './redis-download';
 
 updateNotifier({ pkg }).notify();
