@@ -70,10 +70,10 @@ describe('redis-download', () => {
 
 	it('returns location of specified redis download', () => expect(redisDownload({ stdio, version: 'u.v.w' })).resolves.toBe('/a/tmp/dir/redis-download/redis-u.v.w'));
 
-	it('ignore commented lines', () => {
+	it('ignore commented lines', async () => {
 		requestAsync.mockImplementation(() => Promise.resolve('hash redis-u.v.w.tar.gz algo THEHASH http://foo-bar.com/redis-u.v.w.tar.gz\n#hash redis-x.y.z.tar.gz algo THEHASH http://foo-bar.com/redis-x.y.z.tar.gz'));
 
-		return expect(redisDownload({ stdio })).resolves.toBe('/a/tmp/dir/redis-download/redis-u.v.w');
+		await expect(redisDownload({ stdio })).resolves.toBe('/a/tmp/dir/redis-download/redis-u.v.w');
 	});
 
 	describe('request', () => {
@@ -97,7 +97,7 @@ describe('redis-download', () => {
 			expect(request).not.toHaveBeenCalledWith(expect.anything());
 		});
 
-		it('fails if request fails', () => {
+		it('fails if request fails', async () => {
 			const err = new Error();
 			createWriteStream.mockImplementation(() => fileStream);
 			request.mockImplementation(() => {
@@ -108,13 +108,13 @@ describe('redis-download', () => {
 				return requestPipe;
 			});
 
-			return expect(redisDownload({ stdio })).rejects.toBe(err);
+			await expect(redisDownload({ stdio })).rejects.toBe(err);
 		});
 
-		it('fails if hashes don\'t match', () => {
+		it('fails if hashes don\'t match', async () => {
 			digest.mockImplementation(() => 'NOTTHEHASH');
 
-			return expect(redisDownload({ stdio })).rejects.toThrow('The hashes don\'t match!');
+			await expect(redisDownload({ stdio })).rejects.toThrow('The hashes don\'t match!');
 		});
 
 		describe('data', () => {
@@ -243,12 +243,12 @@ describe('redis-download', () => {
 			expect(rename).not.toHaveBeenCalledWith(expect.anything(), expect.anything());
 		});
 
-		it('fails if rename fails', () => {
+		it('fails if rename fails', async () => {
 			const err = new Error();
 
 			rename.mockImplementation(() => Promise.reject(err));
 
-			return expect(redisDownload({ stdio })).rejects.toBe(err);
+			await expect(redisDownload({ stdio })).rejects.toBe(err);
 		});
 	});
 
@@ -288,12 +288,12 @@ describe('redis-download', () => {
 			expect(extract).not.toHaveBeenCalledWith(expect.anything());
 		});
 
-		it('fails if extract fails', () => {
+		it('fails if extract fails', async () => {
 			const err = new Error();
 
 			extract.mockImplementation(() => Promise.reject(err));
 
-			return expect(redisDownload({ stdio })).rejects.toBe(err);
+			await expect(redisDownload({ stdio })).rejects.toBe(err);
 		});
 	});
 
@@ -345,12 +345,12 @@ describe('redis-download', () => {
 			expect(execa).toHaveBeenCalledWith('make', expect.anything());
 		});
 
-		it('fails if make fails', () => {
+		it('fails if make fails', async () => {
 			const err = new Error();
 
 			execa.mockImplementation((cmd) => (cmd === 'make' ? Promise.reject(err) : Promise.resolve()));
 
-			return expect(redisDownload({ stdio })).rejects.toBe(err);
+			await expect(redisDownload({ stdio })).rejects.toBe(err);
 		});
 	});
 });
