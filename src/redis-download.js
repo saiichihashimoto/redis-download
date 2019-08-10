@@ -26,7 +26,7 @@ async function getRedisHashes() {
 		.map(([, tarName, algo, digest, url]) => ({ tarName, algo, digest, url }));
 }
 
-function downloadTar({ filename, algo, digest, url, stdio: [, stdout] }) {
+function downloadTar({ filename, algo, digest, url }) {
 	return new Promise((resolve, reject) => {
 		const fileStream = createWriteStream(filename);
 		const hash = createHash(algo);
@@ -39,9 +39,7 @@ function downloadTar({ filename, algo, digest, url, stdio: [, stdout] }) {
 				const generateOutput = () => `Completed: ${Math.round((1000 * completed) / total) / 10} % (${Math.round((10 * completed) / 1048576) / 10}mb / ${totalMB}mb)${process.platform === 'win32' ? '\u001B[0G' : '\r'}`;
 
 				let lastStdout = generateOutput();
-				if (stdout) {
-					stdout.write(lastStdout);
-				}
+				process.stdout.write(lastStdout);
 
 				response.on('data', (chunk) => {
 					hash.update(chunk);
@@ -49,9 +47,7 @@ function downloadTar({ filename, algo, digest, url, stdio: [, stdout] }) {
 					const text = generateOutput(completed);
 					if (lastStdout !== text) {
 						lastStdout = text;
-						if (stdout) {
-							stdout.write(text);
-						}
+						process.stdout.write(text);
 					}
 				});
 			})
@@ -73,7 +69,6 @@ function downloadTar({ filename, algo, digest, url, stdio: [, stdout] }) {
 export default async function redisDownload({
 	version: specifiedVersion,
 	downloadDir = tmpdir(),
-	stdio = [process.stdin, process.stdout, process.stderr],
 } = {}) {
 	const root = path.resolve(downloadDir, 'redis-download');
 
@@ -85,6 +80,7 @@ export default async function redisDownload({
 	if (!version || version === 'latest') {
 		redisHashes = await getRedisHashes();
 
+		// eslint-disable-next-line require-atomic-updates
 		version = redisHashes[redisHashes.length - 1]
 			.tarName
 			.match(/^(redis-)?(?<version>.*?)(.tar.gz)?$/u)
@@ -112,17 +108,18 @@ export default async function redisDownload({
 			tar = path.resolve(root, tarName);
 			const temp = `${tar}.downloading`;
 
-			await downloadTar({ filename: temp, algo, digest, url, stdio });
+			await downloadTar({ filename: temp, algo, digest, url });
 
 			await rename(temp, tar);
 		}
 
 		await extract({ file: tar, cwd: root });
 
+		// eslint-disable-next-line require-atomic-updates
 		redisDirectory = tar.replace(/\.tar\.gz$/u, '');
 	}
 
-	await execa('make', { cwd: redisDirectory, stdio });
+	await execa('make', { cwd: redisDirectory, stdio: 'inherit' });
 
 	return redisDirectory;
 }
