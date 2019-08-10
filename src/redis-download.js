@@ -1,12 +1,12 @@
-#!/usr/bin/env node
-import execa from 'execa';
 import path from 'path';
+import { createHash } from 'crypto';
+import { tmpdir } from 'os';
+
+import execa from 'execa';
 import request from 'request';
 import requestAsync from 'request-promise-native';
-import { createHash } from 'crypto';
 import { createWriteStream, ensureDir, exists, readdir, rename } from 'fs-extra';
 import { extract } from 'tar';
-import { tmpdir } from 'os';
 
 const redisHashesUrl = 'https://raw.githubusercontent.com/antirez/redis-hashes/master/README';
 const binaryNames = [
@@ -19,14 +19,14 @@ const binaryNames = [
 ];
 
 async function getRedisHashes() {
-	const result = (await requestAsync(redisHashesUrl))
+	return (await requestAsync(redisHashesUrl))
 		.split('\n')
 		.filter((line) => line && line.charAt(0) !== '#')
-		.map((line) => line.split(/\s+/));
-	return result;
+		.map((line) => line.split(/\s+/u))
+		.map(([, tarName, algo, digest, url]) => ({ tarName, algo, digest, url }));
 }
 
-function downloadTar({ filename, algo, digest, url, stdio: [, stdout] }) {
+function downloadTar({ filename, algo, digest, url }) {
 	return new Promise((resolve, reject) => {
 		const fileStream = createWriteStream(filename);
 		const hash = createHash(algo);
@@ -34,14 +34,12 @@ function downloadTar({ filename, algo, digest, url, stdio: [, stdout] }) {
 		request(url)
 			.on('response', (response) => {
 				const total = parseInt(response.headers['content-length'], 10);
-				const totalMB = Math.round(total / 1048576 * 10) / 10;
+				const totalMB = Math.round((10 * total) / 1048576) / 10;
 				let completed = 0;
-				const generateOutput = () => `Completed: ${Math.round(100 * completed / total * 10) / 10} % (${Math.round(completed / 1048576 * 10) / 10}mb / ${totalMB}mb)${(process.platform === 'win32') ? '\u001B[0G' : '\r'}`;
+				const generateOutput = () => `Completed: ${Math.round((1000 * completed) / total) / 10} % (${Math.round((10 * completed) / 1048576) / 10}mb / ${totalMB}mb)${process.platform === 'win32' ? '\u001B[0G' : '\r'}`;
 
 				let lastStdout = generateOutput();
-				if (stdout) {
-					stdout.write(lastStdout);
-				}
+				process.stdout.write(lastStdout);
 
 				response.on('data', (chunk) => {
 					hash.update(chunk);
@@ -49,9 +47,7 @@ function downloadTar({ filename, algo, digest, url, stdio: [, stdout] }) {
 					const text = generateOutput(completed);
 					if (lastStdout !== text) {
 						lastStdout = text;
-						if (stdout) {
-							stdout.write(text);
-						}
+						process.stdout.write(text);
 					}
 				});
 			})
@@ -73,7 +69,6 @@ function downloadTar({ filename, algo, digest, url, stdio: [, stdout] }) {
 export default async function redisDownload({
 	version: specifiedVersion,
 	downloadDir = tmpdir(),
-	stdio = [process.stdin, process.stdout, process.stderr],
 } = {}) {
 	const root = path.resolve(downloadDir, 'redis-download');
 
@@ -84,42 +79,48 @@ export default async function redisDownload({
 
 	if (!version || version === 'latest') {
 		redisHashes = await getRedisHashes();
-		const [, filename] = redisHashes[redisHashes.length - 1];
-		[,, version] = filename.match(/^(redis-)?(.*?)(.tar.gz)?$/);
+
+		// eslint-disable-next-line require-atomic-updates
+		version = redisHashes[redisHashes.length - 1]
+			.tarName
+			.match(/^(redis-)?(?<version>.*?)(.tar.gz)?$/u)
+			.groups.version;
 	}
 
 	const contents = (await readdir(root))
-		.filter((filename) => filename.match(new RegExp(`^(redis-)?${version}`)))
+		.filter((filename) => filename.match(new RegExp(`^(redis-)?${version}`, 'u')))
 		.sort()
 		.map((filename) => path.resolve(root, filename));
 
-	let redisDirectory = contents.find((filename) => !filename.match(new RegExp('.tar.gz$')));
+	let redisDirectory = contents.find((filename) => !filename.endsWith('.tar.gz'));
 
 	if (redisDirectory) {
 		if ((await Promise.all(binaryNames.map((binaryName) => exists(path.resolve(redisDirectory, 'src', binaryName))))).every((binaryExists) => binaryExists)) {
 			return redisDirectory;
 		}
 	} else {
-		let tar = contents.find((filename) => filename.match(new RegExp('.tar.gz$')));
+		// The remaining contents MUST end with .tar.gz
+		let tar = contents[0];
 
 		if (!tar) {
-			const [, tarName, algo, digest, url] = (redisHashes || await getRedisHashes())
-				.find(([, filename]) => filename.match(new RegExp(`^(redis-)?${version}.tar.gz$`)));
+			const { tarName, algo, digest, url } = (redisHashes || await getRedisHashes())
+				.find(({ tarName: filename }) => filename.match(new RegExp(`^(redis-)?${version}.tar.gz$`, 'u')));
 
 			tar = path.resolve(root, tarName);
 			const temp = `${tar}.downloading`;
 
-			await downloadTar({ filename: temp, algo, digest, url, stdio });
+			await downloadTar({ filename: temp, algo, digest, url });
 
 			await rename(temp, tar);
 		}
 
 		await extract({ file: tar, cwd: root });
 
-		redisDirectory = tar.replace(/\.tar\.gz$/, '');
+		// eslint-disable-next-line require-atomic-updates
+		redisDirectory = tar.replace(/\.tar\.gz$/u, '');
 	}
 
-	await execa('make', { cwd: redisDirectory, stdio });
+	await execa('make', { cwd: redisDirectory, stdio: 'inherit' });
 
 	return redisDirectory;
 }

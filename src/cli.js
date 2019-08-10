@@ -3,7 +3,8 @@
 import program from 'commander';
 import updateNotifier from 'update-notifier';
 
-import pkg from '../package.json';
+import pkg from '../package';
+
 import redisDownload from './redis-download';
 
 updateNotifier({ pkg }).notify();
