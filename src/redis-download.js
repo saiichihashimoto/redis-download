@@ -99,7 +99,8 @@ export default async function redisDownload({
 			return redisDirectory;
 		}
 	} else {
-		let tar = contents.find((filename) => filename.endsWith('.tar.gz'));
+		// The remaining contents MUST end with .tar.gz
+		let tar = contents[0];
 
 		if (!tar) {
 			const { tarName, algo, digest, url } = (redisHashes || await getRedisHashes())
