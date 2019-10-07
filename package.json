@@ -33,7 +33,7 @@
   },
   "dependencies": {
     "commander": "3.0.1",
-    "execa": "2.0.4",
+    "execa": "2.0.5",
     "fs-extra": "8.1.0",
     "request": "2.88.0",
     "request-promise-native": "1.0.7",
