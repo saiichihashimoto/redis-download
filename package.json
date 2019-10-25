@@ -33,7 +33,7 @@
   },
   "dependencies": {
     "commander": "3.0.2",
-    "execa": "2.0.5",
+    "execa": "3.2.0",
     "fs-extra": "8.1.0",
     "request": "2.88.0",
     "request-promise-native": "1.0.7",
@@ -41,9 +41,9 @@
     "update-notifier": "3.0.1"
   },
   "devDependencies": {
-    "@babel/cli": "7.6.2",
-    "@babel/core": "7.6.2",
-    "@babel/preset-env": "7.6.2",
+    "@babel/cli": "7.6.4",
+    "@babel/core": "7.6.4",
+    "@babel/preset-env": "7.6.3",
     "@stryker-mutator/babel-transpiler": "2.0.2",
     "@stryker-mutator/core": "2.0.2",
     "@stryker-mutator/javascript-mutator": "2.1.0",
@@ -52,7 +52,7 @@
     "eslint-config-saiichihashimoto": "2.0.47",
     "husky": "3.0.8",
     "jest": "24.1.0",
-    "lint-my-app": "3.7.15"
+    "lint-my-app": "3.7.22"
   },
   "engines": {
     "node": "12.8.0"
