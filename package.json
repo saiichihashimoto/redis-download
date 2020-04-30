@@ -37,7 +37,7 @@
     "fs-extra": "8.1.0",
     "request": "2.88.2",
     "request-promise-native": "1.0.8",
-    "tar": "6.0.1",
+    "tar": "6.0.2",
     "update-notifier": "4.1.0"
   },
   "devDependencies": {
